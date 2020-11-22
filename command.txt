@@ -1,0 +1,52 @@
+CREATE TABLE [dbo].[accidents]( [day_week_description] [nvarchar](50) NOT NULL, [no_of_vehicles] float, CONSTRAINT [PK_accidents] PRIMARY KEY CLUSTERED ([day_week_description] ASC))
+
+
+Upload file:
+scp reporting.zip sshuser@s102753762cluster-ssh.azurehdinsight.net:reporting.zip
+
+Connect to cluster using ssh:
+ssh sshuser@s102753762cluster-ssh.azurehdinsight.net
+
+
+unzip reporting.zip
+
+Create datalake filesystem:
+
+hadoop fs -D "fs.azure.createRemoteFileSystemDuringInitialization=true" -ls abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/
+
+Make directory
+hdfs dfs -mkdir -p abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/data
+hdfs dfs -mkdir -p abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/script
+
+Copy file to directory:
+hdfs dfs -put "reporting.csv" abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/data/
+hdfs dfs -put "staging.hql" abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/script/
+
+Check directory content:
+hdfs dfs -ls abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/data
+hdfs dfs -ls abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/script
+hdfs dfs -ls abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/output
+
+Loading data:
+beeline -u 'jdbc:hive2://localhost:10001/;transportMode=http' -f staging.hql
+
+Open Hive session:
+beeline -u 'jdbc:hive2://localhost:10001/;transportMode=http'
+
+Extraxt data:
+INSERT OVERWRITE DIRECTORY '/accidents/output'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+SELECT regexp_replace(day_week_description, '''', ''),
+sum(no_of_vehicles)
+FROM accidents_in_hive
+WHERE no_of_vehicles IS NOT NULL
+GROUP BY day_week_description;
+
+Display Content:
+hdfs dfs –cat abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/output/000000_0
+
+Check sqoop can see the database:
+sqoop list-databases --connect jdbc:sqlserver://102753762server.database.windows.net:1433 --username admin --password Princess123$
+
+Load data:
+sqoop export --connect 'jdbc:sqlserver://102753762server.database.windows.net:1433;database=102753762rdb' --username s102753762 --password Princess123$ --table 'accidents' --export-dir 'abfs://102753762filesystem@102753762datalake.dfs.core.windows.net/accidents/output' --fields-terminated-by '\t' -m 1
